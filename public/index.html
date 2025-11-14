@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram MTProto Session Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #666;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .status-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-active {
+            color: #10b981;
+        }
+
+        .status-invalid {
+            color: #ef4444;
+        }
+
+        .status-no-session {
+            color: #f59e0b;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .form-container {
+            display: none;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .form-container.show {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+
+        .message-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Telegram Session Manager</h1>
+        <p class="subtitle">Manage your Telegram MTProto session</p>
+
+        <div class="status-card">
+            <div class="status-label">Session Status</div>
+            <div class="status-value" id="statusValue">Checking...</div>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <button class="btn" id="initBtn" onclick="toggleInitForm()">
+            Initialize New Session
+        </button>
+
+        <div class="form-container" id="initForm">
+            <div id="requestCodeSection">
+                <p style="margin-bottom: 20px; color: #666;">Click the button below to request a verification code. You will receive it via Telegram SMS or in your Telegram app.</p>
+                <button class="btn" id="requestCodeBtn" onclick="handleRequestCode()">
+                    Request Code
+                </button>
+            </div>
+
+            <form id="codeForm" onsubmit="handleInitialize(event)" style="display: none;">
+                <div class="form-group">
+                    <label for="smsCode">SMS Code *</label>
+                    <input 
+                        type="text" 
+                        id="smsCode" 
+                        name="smsCode" 
+                        placeholder="Enter code from Telegram"
+                        required
+                        maxlength="10"
+                    >
+                    <div class="help-text">Enter the code you received via Telegram SMS/app</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="twoFactorPassword">2FA Password (Optional)</label>
+                    <input 
+                        type="password" 
+                        id="twoFactorPassword" 
+                        name="twoFactorPassword" 
+                        placeholder="Enter 2FA password if enabled"
+                    >
+                    <div class="help-text">Only required if two-step verification is enabled</div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">
+                    Initialize Session
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let formVisible = false;
+
+        // Check session status on page load
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/session/status');
+                const data = await response.json();
+                
+                if (data.ok) {
+                    updateStatus(data.status);
+                } else {
+                    updateStatus('error');
+                }
+            } catch (error) {
+                console.error('Error checking status:', error);
+                updateStatus('error');
+            }
+        }
+
+        function updateStatus(status) {
+            const statusEl = document.getElementById('statusValue');
+            statusEl.className = 'status-value';
+            
+            switch(status) {
+                case 'active':
+                    statusEl.textContent = '✓ Session Active';
+                    statusEl.classList.add('status-active');
+                    break;
+                case 'invalid':
+                    statusEl.textContent = '✗ Session Invalid';
+                    statusEl.classList.add('status-invalid');
+                    break;
+                case 'no_session':
+                    statusEl.textContent = '⚠ No Session';
+                    statusEl.classList.add('status-no-session');
+                    break;
+                default:
+                    statusEl.textContent = '⚠ Error Checking Status';
+                    statusEl.classList.add('status-invalid');
+            }
+        }
+
+        function toggleInitForm() {
+            formVisible = !formVisible;
+            const form = document.getElementById('initForm');
+            const btn = document.getElementById('initBtn');
+            const requestSection = document.getElementById('requestCodeSection');
+            const codeForm = document.getElementById('codeForm');
+            
+            if (formVisible) {
+                form.classList.add('show');
+                btn.textContent = 'Cancel';
+                // Reset to initial state
+                requestSection.style.display = 'block';
+                codeForm.style.display = 'none';
+                document.getElementById('smsCode').value = '';
+                document.getElementById('twoFactorPassword').value = '';
+            } else {
+                form.classList.remove('show');
+                btn.textContent = 'Initialize New Session';
+                // Reset form
+                requestSection.style.display = 'block';
+                codeForm.style.display = 'none';
+                document.getElementById('smsCode').value = '';
+                document.getElementById('twoFactorPassword').value = '';
+                hideMessage();
+            }
+        }
+
+        async function handleRequestCode() {
+            const requestBtn = document.getElementById('requestCodeBtn');
+            const requestSection = document.getElementById('requestCodeSection');
+            const codeForm = document.getElementById('codeForm');
+            
+            // Disable button and show loading
+            requestBtn.disabled = true;
+            requestBtn.innerHTML = '<span class="loading"></span>Requesting Code...';
+            hideMessage();
+
+            try {
+                const response = await fetch('/api/session/request-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    showMessage(data.message || 'Code sent successfully! Please check your Telegram.', 'success');
+                    // Hide request section and show code form
+                    requestSection.style.display = 'none';
+                    codeForm.style.display = 'block';
+                } else {
+                    showMessage(data.error || 'Failed to request code', 'error');
+                    requestBtn.disabled = false;
+                    requestBtn.textContent = 'Request Code';
+                }
+            } catch (error) {
+                console.error('Error requesting code:', error);
+                showMessage('An error occurred while requesting the code', 'error');
+                requestBtn.disabled = false;
+                requestBtn.textContent = 'Request Code';
+            }
+        }
+
+        async function handleInitialize(event) {
+            event.preventDefault();
+            
+            const smsCode = document.getElementById('smsCode').value.trim();
+            const twoFactorPassword = document.getElementById('twoFactorPassword').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (!smsCode) {
+                showMessage('Please enter the SMS code', 'error');
+                return;
+            }
+
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span>Initializing...';
+            hideMessage();
+
+            try {
+                const response = await fetch('/api/session/initialize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        smsCode: smsCode,
+                        twoFactorPassword: twoFactorPassword || ''
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    showMessage('Session initialized successfully!', 'success');
+                    // Reset form
+                    document.getElementById('smsCode').value = '';
+                    document.getElementById('twoFactorPassword').value = '';
+                    // Hide form
+                    toggleInitForm();
+                    // Refresh status
+                    setTimeout(checkStatus, 1000);
+                } else {
+                    showMessage(data.error || 'Failed to initialize session', 'error');
+                }
+            } catch (error) {
+                console.error('Error initializing session:', error);
+                showMessage('An error occurred while initializing the session', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Initialize Session';
+            }
+        }
+
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `message message-${type} show`;
+        }
+
+        function hideMessage() {
+            const messageEl = document.getElementById('message');
+            messageEl.classList.remove('show');
+        }
+
+        // Check status on page load
+        checkStatus();
+        
+        // Refresh status every 30 seconds
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>
+
