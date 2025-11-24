@@ -8,6 +8,10 @@ dotenv.config();
 
 const API_ID = Number(process.env.API_ID);
 const API_HASH = process.env.API_HASH;
+const DC_ID = Number(process.env.DC_ID);
+const DC_IP = process.env.DC_IP;
+const DC_PORT = Number(process.env.DC_PORT);
+const DC_USE_WSS = Boolean(process.env.DC_USE_WSS);
 const PHONE = process.env.PHONE;
 const SESSION_FILE = process.env.SESSION_FILE || 'session.txt';
 
@@ -16,7 +20,6 @@ if (!API_ID || !API_HASH || !PHONE) {
   console.error('Missing API_ID, API_HASH or PHONE in .env');
   process.exit(1);
 }
-
 let client; // TelegramClient instance
 let pendingAuth = null; // Store pending authentication state (phoneCodeHash)
 let currentSessionString = null; // Track the session string currently in use
@@ -137,11 +140,14 @@ export async function requestCode() {
 
     const stringSession = new StringSession('');
     const newClient = new TelegramClient(stringSession, API_ID, API_HASH, {
-      connection: ConnectionTCPFull,
       receiveUpdates: false, // Disable update loop for REST API usage
       timeout: 30000, // Set timeout to prevent hanging
+      connectionRetries: 5,
+      useWSS: DC_USE_WSS
     });
 
+    newClient.session.setDC(DC_ID,DC_IP,DC_PORT)
+    
     // Connect first
     await newClient.connect();
 
