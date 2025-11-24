@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { Api } from 'telegram';
 import { getClient, checkSessionStatus, initializeSession, requestCode } from './client.js';
 dotenv.config();
 
@@ -210,6 +211,66 @@ app.post('/api/session/initialize', async (req, res) => {
   } catch (err) {
     console.error('POST /api/session/initialize error', err);
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * POST /chats/:id/send-message
+ * Sends a message to the specified chat id/username.
+ * * Body: { message: string }
+ *
+ * Note: :id must match the 'id' field returned from /chats (string) 
+ * or be a valid username/phone number/chat ID.
+ */
+app.post('/chats/:id/send-message', async (req, res) => {
+  try {
+    const client = await getClient();
+    const id = req.params.id; // Chat identifier (ID or username)
+    const { message } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ ok: false, error: 'Missing chat id' });
+    }
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ ok: false, error: 'Message content is required' });
+    }
+
+    // 1. Get the Telegram entity (InputPeer) from the ID/username
+    // This handles resolving the 'peer' needed for the API call
+    const entity = await client.getEntity(id);
+
+    // 2. Send the message using client.invoke with Api.messages.SendMessage
+    // Note: GramJS provides a higher-level client.sendMessage, but using 
+    // client.invoke(new Api.messages.SendMessage) is a powerful, low-level way
+    // to access all Telegram API features, matching your provided example.
+    const result = await client.invoke(
+      new Api.messages.SendMessage({
+        // The peer obtained from client.getEntity is directly usable here
+        peer: entity, 
+        message: message,
+        // The randomId is crucial to prevent message resending on retry
+        // Use BigInt for compatibility, as required by the Telegram API layer
+        randomId: BigInt(Math.floor(Math.random() * 0xFFFFFFFFFFFFFFF) + 1), 
+        // Other optional flags can be added here as needed:
+        // noWebpage: true,
+      })
+    );
+
+    // 3. Respond with success and the result of the API call
+    // The result is typically an Api.Updates object (Source 3.1)
+    res.json({ ok: true, chatId: id, result: result });
+
+  } catch (err) {
+    // Check if the error is related to entity not found or invalid peer
+    const errorMessage = err.message || 'Failed to send message';
+    console.error('POST /chats/:id/send-message error', err);
+    
+    // Attempt to return a more user-friendly error
+    if (errorMessage.includes('not found') || errorMessage.includes('PEER_ID_INVALID')) {
+        res.status(404).json({ ok: false, error: `Chat with identifier ${req.params.id} not found or is invalid.` });
+    } else {
+        res.status(500).json({ ok: false, error: errorMessage });
+    }
   }
 });
 
